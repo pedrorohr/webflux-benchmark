@@ -1,0 +1,67 @@
+buildscript {
+	ext {
+		springBootVersion = '2.0.4.RELEASE'
+	}
+	repositories {
+		mavenCentral()
+	}
+	dependencies {
+		classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+		classpath ("se.transmode.gradle:gradle-docker:1.2")
+	}
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management'
+apply plugin: 'docker'
+
+group = 'br.com.spring.boot.web'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = 1.8
+
+repositories {
+	mavenCentral()
+}
+
+
+dependencies {
+	compile('org.springframework.boot:spring-boot-starter-web')
+	testCompile('org.springframework.boot:spring-boot-starter-test')
+}
+
+docker {
+	baseImage = 'store/oracle/serverjre:8'
+}
+
+task distDockerLocal(type: Docker) {
+	dryRun = false
+	addFile ("${project.buildDir}/${project.libsDirName}/${rootProject.name}-${currentVersion}-${currentBuild}.jar", "/")
+	exposePort(8160)
+	setEnvironment('JAVA_OPTS', "-Xmx512m -Xmx512m -Djava.security.egd=file:/dev/./urandom ")
+
+	entryPoint(['java', '-Djava.security.egd=file:/dev/./urandom', '-jar', '/'+"${rootProject.name}-${currentVersion}-${currentBuild}"+'.jar'])
+}
+
+distDockerLocal.dependsOn(build)
+
+task pathingJar(type: Jar) {
+	dependsOn configurations.runtime
+	appendix = 'pathing'
+	doFirst {
+		manifest {
+			attributes "Class-Path": configurations.runtime.files.collect {
+				it.toURL().toString().replaceFirst('/file:/+/', '/')
+			}.join(' ')
+		}
+	}
+}
+
+bootRun {
+	dependsOn pathingJar
+	doFirst {
+		classpath = files("$buildDir/classes/java/main", "$buildDir/resources/main", pathingJar.archivePath)
+	}
+}
